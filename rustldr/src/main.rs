@@ -10,7 +10,7 @@ fn main() {
     let mut entry;
     let mut status: u64;
     let mut size: u64 = 0;
-    let mut memory: Box<[u8]>;
+    let mut memory: *mut u8;
     let mut output: i8;
     
     println!("[*] RUST CoffeeLdr: Beacon Object loader by Mark@DUBHE");
@@ -24,12 +24,12 @@ fn main() {
     
     println!("[*] File => {}\n", bof_file);
 
-    memory = load_file_into_memory(bof_file, size);  // 加载bof文件
-    if memory.is_empty(){
+    memory = load_file_into_memory(bof_file, &mut size);  // 加载bof文件
+    if memory.is_null() {
         panic!("[!] Couldn't load file")
     }
-
-    status = coffee_ldr( entry, memory);
+    println!("{}", size);
+    // status = coffee_ldr( entry, memory);
 
        
 }      

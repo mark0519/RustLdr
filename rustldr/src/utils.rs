@@ -1,11 +1,19 @@
-use std::{fs::{self, File}, io::{Read}};
+use std::fs::File;
+use std::io::{Read};
 
-pub fn load_file_into_memory(path:&str, mut memory_size:u64) -> Box<[u8]> {
-    let len:u64 = fs::metadata(path).unwrap().len();
-    memory_size = len; // 获得bof文件实际大小
-    
-    let mut h_file:File = fs::File::open(path).expect("\n[!] Error opening bof file\n");
-    let mut buf:Vec<u8> = Vec::with_capacity(memory_size as usize); // 根据bof文件实际大小开辟缓冲区
-    h_file.read_to_end(&mut buf);
-    buf.into_boxed_slice()
+pub fn load_file_into_memory(path: &str, memory_size: &mut u64) -> *mut u8 {
+    let mut file = File::open(path).unwrap();
+    let file_size = file.metadata().unwrap().len() as usize;
+    let mut buffer = Vec::with_capacity(file_size);
+    unsafe {
+        buffer.set_len(file_size);
+    }
+    file.read_exact(&mut buffer);
+
+    let image_buffer = buffer.as_mut_ptr();
+    std::mem::forget(buffer);
+
+    *memory_size = file_size as u64;
+
+    image_buffer
 }
