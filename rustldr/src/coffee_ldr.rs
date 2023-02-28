@@ -6,10 +6,10 @@ use std::ffi::CString;
 use std::ptr::{null, null_mut};
 use std::os::windows::ffi::OsStrExt;
 use std::os::raw::c_void;
-use winapi::um::memoryapi::{VirtualAlloc, VirtualProtect},
+use winapi::um::memoryapi::{VirtualAlloc, VirtualProtect};
 use winapi::{
     shared::{
-        minwindef::{DWORD, LPVOID, UINT},
+        minwindef::{DWORD, LPVOID, UINT, USHORT, UCHAR},
         ntdef::{CHAR, HANDLE, PVOID, ULONG},
         basetsd::{SIZE_T}
     },
@@ -65,19 +65,21 @@ struct COFF_SYMBOL { //符号表
     NumberOfAuxSymbols: UCHAR,
 }
 
+#[repr(C)]
 struct SECTION_MAP { //节区映射表
-    ptr: *mut u8,
+    ptr: *mut i8,
     size: usize,
 }
 
+#[repr(C)]
 struct COFFEE {
-    data: *mut u8,
+    data: *mut c_void,
     header: *mut COFF_FILE_HEADER,
     section: *mut COFF_SECTION,
     reloc: *mut COFF_RELOC,
     symbol: *mut COFF_SYMBOL,
-    sec_map: Vec<SECTION_MAP>,
-    fun_map: *mut u8,
+    sec_map: *mut SECTION_MAP,
+    fun_map: *mut i8,
 }
 
 
@@ -98,7 +100,7 @@ pub fn coffee_ldr(entry_name: &str, coffee_data: *const c_void, arg_data: *const
     }
 
     coffee.data = coffee_data as *mut c_void;
-    coffee.header = coffee_data as *mut IMAGE_FILE_HEADER;
+    coffee.header = coffee_data as *mut COFF_FILE_HEADER;
 
     unsafe {
         coffee.sec_map = VirtualAlloc(null_mut(), (coffee.header as *const _ as usize).wrapping_add(size_of::<IMAGE_SECTION_HEADER>() * (*coffee.header).NumberOfSections as usize) as SIZE_T, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) as *mut SECTION_MAP;
@@ -108,8 +110,8 @@ pub fn coffee_ldr(entry_name: &str, coffee_data: *const c_void, arg_data: *const
         println!("[*] Load sections");
 
         for i in 0..(*coffee.header).NumberOfSections {
-            coffee.section = coffee_data as *mut IMAGE_FILE_HEADER;
-            coffee.section = coffee.section.offset(1) as *mut IMAGE_SECTION_HEADER;
+            coffee.section = coffee_data as *mut COFF_SECTION;
+            coffee.section = coffee.section.offset(1) as *mut COFF_SECTION;
             coffee.section = coffee.section.offset(i as isize);
 
             (*coffee.sec_map.offset(i as isize)).size = (*coffee.section).SizeOfRawData as SIZE_T;
@@ -121,7 +123,7 @@ pub fn coffee_ldr(entry_name: &str, coffee_data: *const c_void, arg_data: *const
         }
     
         println!("[*] Process sections");
-        coffee.symbol = (coffee_data as *mut IMAGE_FILE_HEADER).offset(1) as *mut IMAGE_SYMBOL;
+        coffee.symbol = (coffee_data as *mut COFF_SECTION).offset(1) as *mut COFF_SYMBOL;
         if !coffee_process_sections(&mut coffee) {
             println!("[*] Failed to process relocation");
             return 1;
