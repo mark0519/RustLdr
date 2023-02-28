@@ -103,7 +103,7 @@ pub fn coffee_ldr(entry_name: &str, coffee_data: *const c_void, arg_data: *const
     coffee.header = coffee_data as *mut COFF_FILE_HEADER;
 
     unsafe {
-        coffee.sec_map = VirtualAlloc(null_mut(), (coffee.header as *const _ as usize).wrapping_add(size_of::<IMAGE_SECTION_HEADER>() * (*coffee.header).NumberOfSections as usize) as SIZE_T, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) as *mut SECTION_MAP;
+        coffee.sec_map = VirtualAlloc(null_mut(), (coffee.header as *const _ as usize).wrapping_add(size_of::<COFF_SECTION>() * (*coffee.header).NumberOfSections as usize) as SIZE_T, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) as *mut SECTION_MAP;
 
         coffee.fun_map = VirtualAlloc(null_mut(), 2048, MEM_COMMIT | MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE) as *mut i8;
 
