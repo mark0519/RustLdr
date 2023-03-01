@@ -2,11 +2,12 @@ extern crate winapi;
 
 use std::{fs::{self, File}, io::{Read}, mem, default};
 use std::mem::{size_of, zeroed};
-use std::ffi::CString;
 use std::ptr::{null, null_mut};
 use std::os::windows::ffi::OsStrExt;
 use std::os::raw::c_void;
 use utils::hash_string;
+// use con
+use std::ffi::CStr;
 use winapi::{um::{memoryapi::{VirtualAlloc, VirtualProtect}}, shared::basetsd::UINT64};
 use winapi::um::libloaderapi::{FreeLibrary, GetProcAddress, LoadLibraryA, GetModuleHandleA};
 use winapi::{
@@ -21,7 +22,7 @@ use winapi::{
             PIMAGE_BASE_RELOCATION, PIMAGE_IMPORT_DESCRIPTOR, PIMAGE_NT_HEADERS,
             PIMAGE_SECTION_HEADER, PIMAGE_THUNK_DATA, PIMAGE_TLS_CALLBACK,
         },
-    winnt::{PCHAR, IMAGE_REL_AMD64_ADDR64, IMAGE_REL_AMD64_ADDR32NB, IMAGE_REL_AMD64_REL32, IMAGE_REL_AMD64_REL32_5}
+    winnt::{IMAGE_REL_AMD64_ADDR64, IMAGE_REL_AMD64_ADDR32NB, IMAGE_REL_AMD64_REL32, IMAGE_REL_AMD64_REL32_5}
     },
 };
 
@@ -31,7 +32,7 @@ const COFF_PREP_SYMBOL: u64 = 0xec598a48;
 const COFF_PREP_SYMBOL_SIZE: u64 = 6;
 const COFF_PREP_BEACON: u64 = 0x353400b0;
 const COFF_PREP_BEACON_SIZE: u64 = COFF_PREP_SYMBOL_SIZE + 6;
-
+const BeaconApiCounter:u64 = 25;
 
 #[repr(C)]
 struct COFF_FILE_HEADER { // 文件头
@@ -119,8 +120,30 @@ unsafe fn coffee_process_symbol(symbol: *mut i8) -> PVOID   {
     let mut sym_function: *mut i8 = null_mut();
     let mut h_library: HANDLE = null_mut();
 
-    let mut sym_hash = hash_string(symbol, 0);
+    let mut sym_hash = hash_string((symbol as u64 + COFF_PREP_SYMBOL_SIZE) as *mut i8, 0);
+    let mut sym_beacon = hash_string(symbol, COFF_PREP_BEACON_SIZE as usize);
 
+    std::ptr::copy_nonoverlapping(
+        symbol,
+        bak.as_mut_ptr() as *mut i8,
+        CStr::from_ptr(symbol).to_str().unwrap().len() + 1 as usize
+    );
+
+    // if(
+    //     sym_beacon == COFF_PREP_BEACON      ||  // check if this is a Beacon api
+    //     sym_hash == COFFAPI_TOWIDECHAR      ||
+    //     sym_hash == COFFAPI_GETPROCADDRESS  ||
+    //     sym_hash == COFFAPI_LOADLIBRARYA    ||
+    //     sym_hash == COFFAPI_GETMODULEHANDLE ||
+    //     sym_hash == COFFAPI_FREELIBRARY
+    // ){
+    //     sym_function = symbol .offset(COFF_PREP_SYMBOL_SIZE as isize);
+        // for i in 0.. BeaconApiCounter{
+        //     if(hash_string(sym_function, 0) == )
+        // }
+
+
+    }
 
 
     func_addr // TODO: check
