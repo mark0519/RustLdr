@@ -6,7 +6,7 @@ use std::ffi::CString;
 use std::ptr::{null, null_mut};
 use std::os::windows::ffi::OsStrExt;
 use std::os::raw::c_void;
-use winapi::{um::{memoryapi::{VirtualAlloc, VirtualProtect}, winnt::PCHAR}, shared::basetsd::UINT64};
+use winapi::{um::{memoryapi::{VirtualAlloc, VirtualProtect}}, shared::basetsd::UINT64};
 use winapi::{
     shared::{
         minwindef::{DWORD, LPVOID, UINT, USHORT, UCHAR},
@@ -19,8 +19,14 @@ use winapi::{
             PIMAGE_BASE_RELOCATION, PIMAGE_IMPORT_DESCRIPTOR, PIMAGE_NT_HEADERS,
             PIMAGE_SECTION_HEADER, PIMAGE_THUNK_DATA, PIMAGE_TLS_CALLBACK,
         },
+    winnt::{PCHAR, IMAGE_REL_AMD64_ADDR64, IMAGE_REL_AMD64_ADDR32NB, IMAGE_REL_AMD64_REL32, IMAGE_REL_AMD64_REL32_5}
     },
 };
+
+const COFF_PREP_SYMBOL: u64 = 0xec598a48;
+const COFF_PREP_SYMBOL_SIZE: u64 = 6;
+const COFF_PREP_BEACON: u64 = 0x353400b0;
+const COFF_PREP_BEACON_SIZE: u64 = COFF_PREP_SYMBOL_SIZE + 6;
 
 
 #[repr(C)]
@@ -161,8 +167,8 @@ pub fn coffee_ldr(entry_name: &str, coffee_data: *const c_void, arg_data: *const
 
 fn coffee_process_sections(coffee: &mut COFFEE) -> bool {
     let mut symbol:u32 = 0;
-    let mut sym_string:PVOID;
-    let mut func_ptr:PCHAR;
+    let mut sym_string:*mut i8;
+    let mut func_ptr:*mut i8;
     let mut func_count:DWORD = 0;
     let mut offset_long:u64 = 0;
     let mut offset:u32 = 0;
@@ -173,8 +179,70 @@ fn coffee_process_sections(coffee: &mut COFFEE) -> bool {
 
             for reloc_cnt in 0..(*coffee.section).NumberOfRelocations{
                 if((*coffee.symbol.offset((*coffee.reloc).SymbolTableIndex as isize)).First.Name[0] != 0){
-                    //TODO: check
+                    symbol = (*coffee.symbol.offset((*coffee.reloc).SymbolTableIndex as isize)).First.Value[1];
+                    
+                    if (*coffee.reloc).Type == IMAGE_REL_AMD64_ADDR64 {
+                        std::ptr::copy_nonoverlapping(
+                            ((*coffee.sec_map.offset(section_cnt as isize)).ptr as usize + (*coffee.reloc).VirtualAddress as usize) as *mut u64,
+                            &mut offset_long as *mut u64,
+                            std::mem::size_of::<u64>(),
+                        );
+                        let symbol_index:u32 = (*coffee.reloc).SymbolTableIndex;
+                        let sec_map_index:u32 = ((*coffee.symbol.offset(symbol_index as isize)).SectionNumber - 1).into();
+                        offset_long = (*coffee.sec_map.offset( sec_map_index as isize )).ptr as u64 + offset_long;
+                        std::ptr::copy_nonoverlapping(
+                            &mut offset_long as *mut u64,
+                            ((*coffee.sec_map.offset(section_cnt as isize)).ptr as usize + (*coffee.reloc).VirtualAddress as usize) as *mut u64,
+                            std::mem::size_of::<u64>(),
+                        );
+                    } else if ((*coffee.reloc).Type == IMAGE_REL_AMD64_ADDR32NB) {
+                        std::ptr::copy_nonoverlapping(
+                            ((*coffee.sec_map.offset(section_cnt as isize)).ptr as usize + (*coffee.reloc).VirtualAddress as usize) as *mut u32,
+                            &mut offset as *mut u32,
+                            std::mem::size_of::<u32>(),
+                        );
+                        let symbol_index:u32 = (*coffee.reloc).SymbolTableIndex;
+                        let sec_map_index:u32 = ((*coffee.symbol.offset(symbol_index as isize)).SectionNumber - 1).into();
+                        offset = (*coffee.sec_map.offset( sec_map_index as isize )).ptr as u32 + offset;
+                        if offset as u64 - (((*coffee.sec_map.offset(section_cnt as isize)).ptr as u64 + (*coffee.reloc).VirtualAddress as u64 + 4) as u64)  > 0xffffffff {
+                            return false;
+                        }
+                        offset = offset - (((*coffee.sec_map.offset(section_cnt as isize)).ptr as u32 + (*coffee.reloc).VirtualAddress as u32 + 4) as u32);
+                        std::ptr::copy_nonoverlapping(
+                            &mut offset as *mut u32,
+                            ((*coffee.sec_map.offset(section_cnt as isize)).ptr as usize + (*coffee.reloc).VirtualAddress as usize) as *mut u32,
+                            std::mem::size_of::<u32>(),
+                        );
+                    } else if (IMAGE_REL_AMD64_REL32 <= (*coffee.reloc).Type &&
+                              (*coffee.reloc).Type <= IMAGE_REL_AMD64_REL32_5) {
+                        std::ptr::copy_nonoverlapping(
+                            ((*coffee.sec_map.offset(section_cnt as isize)).ptr as usize + (*coffee.reloc).VirtualAddress as usize) as *mut u32,
+                            &mut offset as *mut u32,
+                            std::mem::size_of::<u32>(),
+                        );
+                        let symbol_index:u32 = (*coffee.reloc).SymbolTableIndex;
+                        let sec_map_index:u32 = ((*coffee.symbol.offset(symbol_index as isize)).SectionNumber - 1).into();
+                        let tmp_ptr = (*coffee.sec_map.offset(sec_map_index as isize)).ptr;
+                        if((tmp_ptr as u64 - (*coffee.reloc).VirtualAddress as u64 + 4) as u64 > 0xffffffff) {
+                            return false;
+                        }
+                        offset += tmp_ptr as u32 - ((*coffee.reloc).Type - 4 ) as u32 - ((*coffee.sec_map.offset(section_cnt as isize)).ptr as u32 + (*coffee.reloc).VirtualAddress + 4) as u32;
+                        std::ptr::copy_nonoverlapping(
+                            &mut offset as *mut u32,
+                            ((*coffee.sec_map.offset(section_cnt as isize)).ptr as u32 + (*coffee.reloc).VirtualAddress as u32) as *mut u32,
+                            std::mem::size_of::<u32>(),
+                        );
+                    }else{
+                        println!("[!] Relocation type not found: {}",(*coffee.reloc).Type);
+                    }
+                }else{
+                    symbol = (*coffee.symbol.offset((*coffee.reloc).SymbolTableIndex as isize)).First.Value[1];
+                    sym_string = ((coffee.symbol as usize + (*coffee.header).NumberOfSymbols as usize) + symbol as usize) as *mut i8;
+                    // func_ptr = coffee_process_symbol( SymString );
+                    // TODO: need finish coffee_process_symbol
+                
                 }
+
             }
 
         }
