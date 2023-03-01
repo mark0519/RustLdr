@@ -6,7 +6,9 @@ use std::ffi::CString;
 use std::ptr::{null, null_mut};
 use std::os::windows::ffi::OsStrExt;
 use std::os::raw::c_void;
+use utils::hash_string;
 use winapi::{um::{memoryapi::{VirtualAlloc, VirtualProtect}}, shared::basetsd::UINT64};
+use winapi::um::libloaderapi::{FreeLibrary, GetProcAddress, LoadLibraryA, GetModuleHandleA};
 use winapi::{
     shared::{
         minwindef::{DWORD, LPVOID, UINT, USHORT, UCHAR},
@@ -22,6 +24,8 @@ use winapi::{
     winnt::{PCHAR, IMAGE_REL_AMD64_ADDR64, IMAGE_REL_AMD64_ADDR32NB, IMAGE_REL_AMD64_REL32, IMAGE_REL_AMD64_REL32_5}
     },
 };
+
+use crate::utils;
 
 const COFF_PREP_SYMBOL: u64 = 0xec598a48;
 const COFF_PREP_SYMBOL_SIZE: u64 = 6;
@@ -106,6 +110,22 @@ impl std::fmt::Debug for COFFEE {
             .finish()
     }
 }
+
+
+unsafe fn coffee_process_symbol(symbol: *mut i8) -> PVOID   {
+    let mut bak: [u8; 1024] = [0; 1024];
+    let mut func_addr: PVOID = null_mut();
+    let mut sym_library: *mut i8 = null_mut();
+    let mut sym_function: *mut i8 = null_mut();
+    let mut h_library: HANDLE = null_mut();
+
+    let mut sym_hash = hash_string(symbol, 0);
+
+
+
+    func_addr // TODO: check
+}
+
 
 pub fn coffee_ldr(entry_name: &str, coffee_data: *const c_void, arg_data: *const c_void, arg_size: SIZE_T) -> DWORD {
     let mut coffee = COFFEE {
@@ -238,7 +258,7 @@ fn coffee_process_sections(coffee: &mut COFFEE) -> bool {
                 }else{
                     symbol = (*coffee.symbol.offset((*coffee.reloc).SymbolTableIndex as isize)).First.Value[1];
                     sym_string = ((coffee.symbol as usize + (*coffee.header).NumberOfSymbols as usize) + symbol as usize) as *mut i8;
-                    // func_ptr = coffee_process_symbol( SymString );
+                    // func_ptr = coffee_process_symbol( sym_string );
                     // TODO: need finish coffee_process_symbol
                 
                 }
@@ -253,3 +273,5 @@ fn coffee_process_sections(coffee: &mut COFFEE) -> bool {
 
     true
 }
+
+

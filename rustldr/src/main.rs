@@ -2,7 +2,7 @@ pub mod utils;
 pub mod coffee_ldr;
 
 use std::{fs::{self, File}, io::{Read, BufReader}};
-use utils::load_file_into_memory;
+use utils::{load_file_into_memory, hash_string};
 use coffee_ldr::coffee_ldr;
 use std::ptr::null_mut;
 use std::os::raw::c_void;
