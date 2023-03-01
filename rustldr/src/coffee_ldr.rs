@@ -1,12 +1,12 @@
 extern crate winapi;
 
-use std::{fs::{self, File}, io::{Read}, mem};
+use std::{fs::{self, File}, io::{Read}, mem, default};
 use std::mem::{size_of, zeroed};
 use std::ffi::CString;
 use std::ptr::{null, null_mut};
 use std::os::windows::ffi::OsStrExt;
 use std::os::raw::c_void;
-use winapi::um::memoryapi::{VirtualAlloc, VirtualProtect};
+use winapi::{um::{memoryapi::{VirtualAlloc, VirtualProtect}, winnt::PCHAR}, shared::basetsd::UINT64};
 use winapi::{
     shared::{
         minwindef::{DWORD, LPVOID, UINT, USHORT, UCHAR},
@@ -56,9 +56,14 @@ struct COFF_RELOC { //重定位信息表
 }
 
 #[repr(C)]
-struct COFF_SYMBOL { //符号表
+union COFFSymbolFirst {
     Name: [CHAR; 8],
-    Value: [ULONG; 2],
+    Value: [ULONG; 2]
+}
+
+#[repr(C)]
+struct COFF_SYMBOL { //符号表
+    First: COFFSymbolFirst,
     SectionNumber: USHORT,
     Type: USHORT,
     StorageClass: UCHAR,
@@ -82,6 +87,19 @@ struct COFFEE {
     fun_map: *mut i8,
 }
 
+impl std::fmt::Debug for COFFEE {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("COFFEE")
+            .field("data", &self.data)
+            .field("header", &self.header)
+            .field("section", &self.section)
+            .field("reloc", &self.reloc)
+            .field("symbol", &self.symbol)
+            .field("sec_map", &self.sec_map)
+            .field("fun_map", &self.fun_map)
+            .finish()
+    }
+}
 
 pub fn coffee_ldr(entry_name: &str, coffee_data: *const c_void, arg_data: *const c_void, arg_size: SIZE_T) -> DWORD {
     let mut coffee = COFFEE {
@@ -110,10 +128,10 @@ pub fn coffee_ldr(entry_name: &str, coffee_data: *const c_void, arg_data: *const
         println!("[*] Load sections");
 
         for i in 0..(*coffee.header).NumberOfSections {
-            coffee.section = coffee_data as *mut COFF_SECTION;
-            coffee.section = coffee.section.offset(1) as *mut COFF_SECTION;
-            coffee.section = coffee.section.offset(i as isize);
-
+            coffee.section = ((coffee_data as usize) + size_of::<COFF_FILE_HEADER>() + size_of::<COFF_SECTION>()*(i as usize) ) as *mut COFF_SECTION;
+            // coffee.section = coffee_data as *mut COFF_SECTION;
+            // coffee.section = coffee.section.offset(1) as *mut COFF_SECTION;
+            // coffee.section = coffee.section.offset(i as isize);
             (*coffee.sec_map.offset(i as isize)).size = (*coffee.section).SizeOfRawData as SIZE_T;
             (*coffee.sec_map.offset(i as isize)).ptr = VirtualAlloc(null_mut(), (*coffee.sec_map.offset(i as isize)).size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) as *mut i8;
 
@@ -124,6 +142,8 @@ pub fn coffee_ldr(entry_name: &str, coffee_data: *const c_void, arg_data: *const
     
         println!("[*] Process sections");
         coffee.symbol = (coffee_data as *mut COFF_SECTION).offset(1) as *mut COFF_SYMBOL;
+
+        println!("[*] Debug: {:?}", coffee);  // for debug
         if !coffee_process_sections(&mut coffee) {
             println!("[*] Failed to process relocation");
             return 1;
@@ -131,10 +151,37 @@ pub fn coffee_ldr(entry_name: &str, coffee_data: *const c_void, arg_data: *const
     }
 
     println!("[*] Execute coffee main");
-    coffee_execute_function(&coffee, entry_name, arg_data, arg_size);
+    // coffee_execute_function(&coffee, entry_name, arg_data, arg_size);
 
     println!("[*] Cleanup memory");
-    coffee_cleanup(&mut coffee);
+    // coffee_cleanup(&mut coffee);
 
     0
+}
+
+fn coffee_process_sections(coffee: &mut COFFEE) -> bool {
+    let mut symbol:u32 = 0;
+    let mut sym_string:PVOID;
+    let mut func_ptr:PCHAR;
+    let mut func_count:DWORD = 0;
+    let mut offset_long:u64 = 0;
+    let mut offset:u32 = 0;
+    unsafe{
+        for section_cnt in 0..(*coffee.header).NumberOfSections{
+            coffee.section = ((coffee.data as usize) + size_of::<COFF_FILE_HEADER>() + size_of::<COFF_SECTION>()*(section_cnt as usize) ) as *mut COFF_SECTION;
+            coffee.reloc = ((coffee.data as usize) + (*coffee.section).PointerToRelocations as usize ) as *mut COFF_RELOC;
+
+            for reloc_cnt in 0..(*coffee.section).NumberOfRelocations{
+                if((*coffee.symbol.offset((*coffee.reloc).SymbolTableIndex as isize)).First.Name[0] != 0){
+                    //TODO: check
+                }
+            }
+
+        }
+    }
+
+
+
+
+    true
 }
