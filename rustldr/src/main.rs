@@ -1,11 +1,10 @@
 pub mod utils;
 pub mod coffee_ldr;
+pub mod beacon_api;
 
 use std::{fs::{self, File}, io::{Read, BufReader}};
 use utils::{load_file_into_memory, hash_string};
-use coffee_ldr::coffee_ldr;
-use std::ptr::null_mut;
-use std::os::raw::c_void;
+// use coffee_ldr::coffee_ldr;
 
 fn main() {
     let mut bof_file;    
@@ -31,7 +30,7 @@ fn main() {
         panic!("[!] Couldn't load file")
     }
     println!("bof_file size: {}", size); // for debug
-    status = coffee_ldr( entry, memory as *const c_void, null_mut(), 0)
+    // status = coffee_ldr( entry, memory as *const c_void, null_mut(), 0)
        
 }      
 
